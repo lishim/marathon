@@ -6,6 +6,17 @@ In previous Marathon versions, we monitored offers as a surrogate terminal task 
 
 There are still some edge cases where Mesos agent metadata is wiped (manually, by an operator) in a way that the agent ID will change, but reservations will be preserved. In these cases, Mesos will report a resident tasks as perpetually unreachable. Operators should use the [MARK_AGENT_GONE](http://mesos.apache.org/documentation/latest/operator-http-api/#mark_agent_gone) call in such cases to get Mesos to mark the associated resident tasks as terminal, and therefore signal to Marathon that it should try to relaunch the resident task. This call was introduced in Mesos 1.5.0.
 
+### Non-leader/standby Marathon instances respond to /v2/events with a redirect, rather than proxy
+
+Previously, Marathon standby instances would proxy the event stream. This causes an unnecessary increase in event stream drops, as the connection will terminate if either the master or the standby restarts. Further, there have been occasional buffering issues.
+
+Now, when a standby Marathon instance is asked for /v2/events, it responds with a 302, with a redirect response directing the client to /v2/events resource for the current leader. Clients that consume the event stream should be updated to follow redirect responses.
+
+Event-proxying has the following deprecation schedule:
+
+- 1.7.x - Standby Marathon instances return redirect responses. The old behavior of proxying event streams can be brought back with the command-line argument `--deprecated_features=proxy_events`.
+- 1.8.x - Event stream proxying logic will be completely removed. If `--deprecated_features=proxy_events` is still specified, Marathon will refuse to launch, with an error.
+
 ### Fixed Issues
 
 - [MARATHON-8017](https://jira.mesosphere.com/browse/MARATHON-8017) - Fixed various issues when posting groups with relative ids.
