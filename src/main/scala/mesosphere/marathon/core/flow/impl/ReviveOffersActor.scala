@@ -9,7 +9,8 @@ import com.typesafe.scalalogging.StrictLogging
 import mesosphere.marathon.core.flow.ReviveOffersConfig
 import mesosphere.marathon.core.flow.impl.ReviveOffersActor.OffersWanted
 import mesosphere.marathon.core.event.{SchedulerRegisteredEvent, SchedulerReregisteredEvent}
-import mesosphere.marathon.metrics.{Metrics, ServiceMetric}
+import mesosphere.marathon.metrics.Metrics
+import mesosphere.marathon.metrics.deprecated.ServiceMetric
 import mesosphere.marathon.state.Timestamp
 import rx.lang.scala.{Observable, Subscription}
 
@@ -18,10 +19,11 @@ import scala.concurrent.duration._
 
 private[flow] object ReviveOffersActor {
   def props(
+    metrics: Metrics,
     clock: Clock, conf: ReviveOffersConfig,
     marathonEventStream: EventStream,
     offersWanted: Observable[Boolean], driverHolder: MarathonSchedulerDriverHolder): Props = {
-    Props(new ReviveOffersActor(clock, conf, marathonEventStream, offersWanted, driverHolder))
+    Props(new ReviveOffersActor(metrics, clock, conf, marathonEventStream, offersWanted, driverHolder))
   }
 
   private[impl] case object TimedCheck
@@ -32,13 +34,20 @@ private[flow] object ReviveOffersActor {
   * Revive offers whenever interest is signaled but maximally every 5 seconds.
   */
 private[impl] class ReviveOffersActor(
+    metrics: Metrics,
     clock: Clock, conf: ReviveOffersConfig,
     marathonEventStream: EventStream,
     offersWanted: Observable[Boolean],
     driverHolder: MarathonSchedulerDriverHolder) extends Actor with StrictLogging {
 
-  private[this] val reviveCountMetric = Metrics.minMaxCounter(ServiceMetric, getClass, "reviveCount")
-  private[this] val suppressCountMetric = Metrics.minMaxCounter(ServiceMetric, getClass, "suppressCount")
+  private[this] val oldReviveCountMetric =
+    metrics.deprecatedMinMaxCounter(ServiceMetric, getClass, "reviveCount")
+  private[this] val newReviveCountMetric =
+    metrics.counter("mesos.calls.revive")
+  private[this] val oldSuppressCountMetric =
+    metrics.deprecatedMinMaxCounter(ServiceMetric, getClass, "suppressCount")
+  private[this] val newSuppressCountMetric =
+    metrics.counter("mesos.calls.suppress")
 
   private[impl] var subscription: Subscription = _
   private[impl] var offersCurrentlyWanted: Boolean = false
@@ -73,7 +82,8 @@ private[impl] class ReviveOffersActor(
       nextReviveCancellableOpt.foreach(_.cancel())
       nextReviveCancellableOpt = None
 
-      reviveCountMetric.increment()
+      oldReviveCountMetric.increment()
+      newReviveCountMetric.increment()
       driverHolder.driver.foreach(_.reviveOffers())
       lastRevive = now
 
@@ -95,7 +105,8 @@ private[impl] class ReviveOffersActor(
 
   private[this] def suppressOffers(): Unit = {
     logger.info("=> Suppress offers NOW")
-    suppressCountMetric.increment()
+    oldSuppressCountMetric.increment()
+    newSuppressCountMetric.increment()
     driverHolder.driver.foreach(_.suppressOffers())
   }
 

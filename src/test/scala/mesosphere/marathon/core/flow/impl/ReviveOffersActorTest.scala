@@ -8,6 +8,8 @@ import mesosphere.marathon.test.SettableClock
 import mesosphere.marathon.core.event.{SchedulerRegisteredEvent, SchedulerReregisteredEvent}
 import mesosphere.marathon.core.flow.ReviveOffersConfig
 import mesosphere.marathon.core.flow.impl.ReviveOffersActor.TimedCheck
+import mesosphere.marathon.metrics.Metrics
+import mesosphere.marathon.metrics.dummy.DummyMetrics
 import mesosphere.marathon.util.ScallopStub
 import org.apache.mesos.SchedulerDriver
 import org.mockito.Mockito
@@ -36,6 +38,7 @@ class ReviveOffersActorTest extends AkkaUnitTest {
     }
     lazy val mockScheduler: Scheduler = mock[Scheduler]
     lazy val actorRef = TestActorRef(new TestableActor)
+    lazy val metrics: Metrics = DummyMetrics
 
     def verifyNoMoreInteractions(): Unit = {
       def killActorAndWaitForDeath(): Terminated = {
@@ -54,7 +57,7 @@ class ReviveOffersActorTest extends AkkaUnitTest {
     }
 
     class TestableActor extends ReviveOffersActor(
-      clock, conf, system.eventStream, offersWanted, driverHolder
+      metrics, clock, conf, system.eventStream, offersWanted, driverHolder
     ) {
       var scheduled = Vector.empty[FiniteDuration]
       var cancellable = mock[Cancellable]

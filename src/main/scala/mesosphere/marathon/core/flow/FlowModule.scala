@@ -8,6 +8,7 @@ import com.typesafe.scalalogging.StrictLogging
 import mesosphere.marathon.core.flow.impl.{OfferMatcherLaunchTokensActor, OfferReviverDelegate, ReviveOffersActor}
 import mesosphere.marathon.core.leadership.LeadershipModule
 import mesosphere.marathon.core.matcher.manager.OfferMatcherManager
+import mesosphere.marathon.metrics.Metrics
 import rx.lang.scala.Observable
 
 /**
@@ -26,6 +27,7 @@ class FlowModule(leadershipModule: LeadershipModule) extends StrictLogging {
     * @return an offer reviver that allows explicit calls to reviveOffers
     */
   def maybeOfferReviver(
+    metrics: Metrics,
     clock: Clock,
     conf: ReviveOffersConfig,
     marathonEventStream: EventStream,
@@ -34,7 +36,7 @@ class FlowModule(leadershipModule: LeadershipModule) extends StrictLogging {
 
     if (conf.reviveOffersForNewApps()) {
       lazy val reviveOffersActor = ReviveOffersActor.props(
-        clock, conf, marathonEventStream,
+        metrics, clock, conf, marathonEventStream,
         offersWanted, driverHolder
       )
       val actorRef = leadershipModule.startWhenLeader(reviveOffersActor, "reviveOffersWhenWanted")

@@ -6,7 +6,8 @@ import akka.util.ByteString
 import akka.{Done, NotUsed}
 import com.typesafe.scalalogging.StrictLogging
 import mesosphere.marathon.core.storage.zookeeper.PersistenceStore._
-import mesosphere.marathon.metrics.{Metrics, ServiceMetric}
+import mesosphere.marathon.metrics.Metrics
+import mesosphere.marathon.metrics.deprecated.ServiceMetric
 import org.apache.zookeeper.KeeperException.NoNodeException
 
 import scala.collection.JavaConverters
@@ -36,18 +37,45 @@ import scala.util.{Failure, Try}
   * @param parallelism parallelism level for CRUD operations
   * @param ec execution context
   */
-class ZooKeeperPersistenceStore(factory: AsyncCuratorBuilderFactory, parallelism: Int = 10)(implicit ec: ExecutionContext)
+class ZooKeeperPersistenceStore(
+    metrics: Metrics,
+    factory: AsyncCuratorBuilderFactory,
+    parallelism: Int = 10)(implicit ec: ExecutionContext)
   extends PersistenceStore with StrictLogging {
 
   // format: OFF
-  private[this] val createMetric             = Metrics.counter(ServiceMetric, getClass, "create")
-  private[this] val readMetric               = Metrics.counter(ServiceMetric, getClass, "read")
-  private[this] val updatedMetric            = Metrics.counter(ServiceMetric, getClass, "update")
-  private[this] val deleteMetric             = Metrics.counter(ServiceMetric, getClass, "delete")
-  private[this] val childrenMetric           = Metrics.counter(ServiceMetric, getClass, "children")
-  private[this] val existsMetric             = Metrics.counter(ServiceMetric, getClass, "exists")
-  private[this] val transactionMetric        = Metrics.counter(ServiceMetric, getClass, "transaction")
-  private[this] val transactionOpCountMetric = Metrics.counter(ServiceMetric, getClass, "transactionOpCount")
+  private[this] val oldCreateMetric =
+    metrics.deprecatedCounter(ServiceMetric, getClass, "create")
+  private[this] val newCreateMetric =
+    metrics.counter("debug.zookeeper.operations.create")
+  private[this] val oldReadMetric =
+    metrics.deprecatedCounter(ServiceMetric, getClass, "read")
+  private[this] val newReadMetric =
+    metrics.counter("debug.zookeeper.operations.read")
+  private[this] val oldUpdateMetric =
+    metrics.deprecatedCounter(ServiceMetric, getClass, "update")
+  private[this] val newUpdateMetric =
+    metrics.counter("debug.zookeeper.operations.update")
+  private[this] val oldDeleteMetric =
+    metrics.deprecatedCounter(ServiceMetric, getClass, "delete")
+  private[this] val newDeleteMetric =
+    metrics.counter("debug.zookeeper.operations.delete")
+  private[this] val oldChildrenMetric =
+    metrics.deprecatedCounter(ServiceMetric, getClass, "children")
+  private[this] val newChildrenMetric =
+    metrics.counter("debug.zookeeper.operations.children")
+  private[this] val oldExistsMetric =
+    metrics.deprecatedCounter(ServiceMetric, getClass, "exists")
+  private[this] val newExistsMetric =
+    metrics.counter("debug.zookeeper.operations.exists")
+  private[this] val oldTransactionMetric =
+    metrics.deprecatedCounter(ServiceMetric, getClass, "transaction")
+  private[this] val newTransactionMetric =
+    metrics.counter("debug.zookeeper.operations.transaction")
+  private[this] val oldTransactionOpCountMetric =
+    metrics.deprecatedCounter(ServiceMetric, getClass, "transactionOpCount")
+  private[this] val newTransactionOpCountMetric =
+    metrics.counter("debug.zookeeper.transaction-operations")
 
   /**
     * A Flow for saving nodes to the store. It takes a stream of nodes and returns a stream of node keys
@@ -69,7 +97,8 @@ class ZooKeeperPersistenceStore(factory: AsyncCuratorBuilderFactory, parallelism
 
   override def create(node: Node): Future[String] = {
     logger.debug(s"Creating a node at ${node.path}")
-    createMetric.increment()
+    oldCreateMetric.increment()
+    newCreateMetric.increment()
     factory
       .create()
       .forPath(node.path, node.data.toArray)
@@ -90,7 +119,8 @@ class ZooKeeperPersistenceStore(factory: AsyncCuratorBuilderFactory, parallelism
 
   override def read(path: String): Future[Try[Node]] = {
     logger.debug(s"Reading a node at $path")
-    readMetric.increment()
+    oldReadMetric.increment()
+    newReadMetric.increment()
     factory
       .getData()
       .forPath(path)
@@ -118,7 +148,8 @@ class ZooKeeperPersistenceStore(factory: AsyncCuratorBuilderFactory, parallelism
 
   override def update(node: Node): Future[String] = {
     logger.debug(s"Updating a node at ${node.path}")
-    updatedMetric.increment()
+    oldUpdateMetric.increment()
+    newUpdateMetric.increment()
     factory
       .setData()
       .forPath(node.path, node.data.toArray)
@@ -139,7 +170,8 @@ class ZooKeeperPersistenceStore(factory: AsyncCuratorBuilderFactory, parallelism
 
   override def delete(path: String): Future[String] = {
     logger.debug(s"Deleting a node at $path")
-    deleteMetric.increment()
+    oldDeleteMetric.increment()
+    newDeleteMetric.increment()
     factory
       .delete()
       .forPath(path)
@@ -157,8 +189,9 @@ class ZooKeeperPersistenceStore(factory: AsyncCuratorBuilderFactory, parallelism
       .mapAsync(parallelism)(path => children(path))
 
   override def children(path: String): Future[Seq[String]] = {
-    childrenMetric.increment()
     logger.debug(s"Getting children at $path")
+    oldChildrenMetric.increment()
+    newChildrenMetric.increment()
     factory
       .children()
       .forPath(path).toScala
@@ -171,8 +204,9 @@ class ZooKeeperPersistenceStore(factory: AsyncCuratorBuilderFactory, parallelism
       .mapAsync(parallelism)(path => exists(path))
 
   override def exists(path: String): Future[Boolean] = {
-    existsMetric.increment()
     logger.debug(s"Checking node existence for $path")
+    oldExistsMetric.increment()
+    newExistsMetric.increment()
     factory
       .checkExists()
       .forPath(path).toScala
@@ -200,8 +234,11 @@ class ZooKeeperPersistenceStore(factory: AsyncCuratorBuilderFactory, parallelism
     */
   override def transaction(operations: Seq[StoreOp]): Future[Done] = {
     logger.debug(s"Submitting a transaction with ${operations.size} operations")
-    transactionOpCountMetric.increment(operations.size.toLong)
-    transactionMetric.increment()
+
+    oldTransactionOpCountMetric.increment(operations.size.toLong)
+    oldTransactionMetric.increment()
+    newTransactionOpCountMetric.increment(operations.size.toLong)
+    newTransactionMetric.increment()
 
     val transactionOps = operations.map {
       case CreateOp(node) => factory.transactionOpCreate().forPath(node.path, node.data.toArray)

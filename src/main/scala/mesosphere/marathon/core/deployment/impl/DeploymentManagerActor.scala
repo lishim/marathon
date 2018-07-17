@@ -15,7 +15,8 @@ import mesosphere.marathon.core.launchqueue.LaunchQueue
 import mesosphere.marathon.core.readiness.{ReadinessCheckExecutor, ReadinessCheckResult}
 import mesosphere.marathon.core.task.termination.KillService
 import mesosphere.marathon.core.task.tracker.InstanceTracker
-import mesosphere.marathon.metrics.{Metrics, ServiceMetric}
+import mesosphere.marathon.metrics.Metrics
+import mesosphere.marathon.metrics.deprecated.ServiceMetric
 import mesosphere.marathon.storage.repository.DeploymentRepository
 
 import scala.async.Async.{async, await}
@@ -124,22 +125,29 @@ import scala.util.control.NonFatal
   */
 // format: ON
 class DeploymentManagerActor(
-    taskTracker: InstanceTracker,
-    killService: KillService,
-    launchQueue: LaunchQueue,
-    scheduler: SchedulerActions,
-    healthCheckManager: HealthCheckManager,
-    eventBus: EventStream,
-    readinessCheckExecutor: ReadinessCheckExecutor,
-    deploymentRepository: DeploymentRepository,
-    deploymentActorProps: (ActorRef, KillService, SchedulerActions, DeploymentPlan, InstanceTracker, LaunchQueue, HealthCheckManager, EventStream, ReadinessCheckExecutor) => Props = DeploymentActor.props)(implicit val mat: Materializer) extends Actor with StrictLogging {
+                              metrics: Metrics,
+                              taskTracker: InstanceTracker,
+                              killService: KillService,
+                              launchQueue: LaunchQueue,
+                              scheduler: SchedulerActions,
+                              healthCheckManager: HealthCheckManager,
+                              eventBus: EventStream,
+                              readinessCheckExecutor: ReadinessCheckExecutor,
+                              deploymentRepository: DeploymentRepository,
+                              deploymentActorProps: (ActorRef, KillService, SchedulerActions, DeploymentPlan, InstanceTracker, LaunchQueue, HealthCheckManager, EventStream, ReadinessCheckExecutor) => Props = DeploymentActor.props)(implicit val mat: Materializer) extends Actor with StrictLogging {
   import context.dispatcher
 
   val runningDeployments: mutable.Map[String, DeploymentInfo] = mutable.Map.empty
   val deploymentStatus: mutable.Map[String, DeploymentStepInfo] = mutable.Map.empty
 
-  private[this] val runningDeploymentsMetric = Metrics.minMaxCounter(ServiceMetric, getClass, "currentDeploymentCount")
-  private[this] val totalDeploymentsMetric = Metrics.minMaxCounter(ServiceMetric, getClass, "deploymentCount")
+  private[this] val oldRunningDeploymentsMetric =
+    metrics.deprecatedMinMaxCounter(ServiceMetric, getClass, "currentDeploymentCount")
+  private[this] val newRunningDeploymentsMetric =
+    metrics.gauge("deployments.active")
+  private[this] val oldTotalDeploymentsMetric =
+    metrics.deprecatedMinMaxCounter(ServiceMetric, getClass, "deploymentCount")
+  private[this] val newTotalDeploymentsMetric =
+    metrics.counter("deployments")
 
   override def supervisorStrategy: SupervisorStrategy = OneForOneStrategy() {
     case NonFatal(e) => Stop
@@ -151,7 +159,8 @@ class DeploymentManagerActor(
       sender() ! cancelDeployment(plan.id)
 
     case DeploymentFinished(plan, result) =>
-      runningDeploymentsMetric.decrement()
+      oldRunningDeploymentsMetric.decrement()
+      newRunningDeploymentsMetric.decrement()
       runningDeployments.remove(plan.id).foreach { deploymentInfo =>
         logger.info(s"Removing ${plan.id} for ${plan.targetIdsString} from list of running deployments")
         deploymentStatus -= plan.id
@@ -194,7 +203,8 @@ class DeploymentManagerActor(
       waitForCanceledConflicts(plan, conflicts)
 
     case FailedRepositoryOperation(plan, reason) if isScheduledDeployment(plan.id) => {
-      runningDeploymentsMetric.decrement()
+      oldRunningDeploymentsMetric.decrement()
+      newRunningDeploymentsMetric.decrement()
       runningDeployments.remove(plan.id).foreach(info => info.promise.failure(reason))
     }
   }
@@ -267,7 +277,8 @@ class DeploymentManagerActor(
     // [Canceling] - Nothing to do here since this deployment is already being canceled
     conflicts.filter(info => runningDeployments.contains(info.plan.id)).foreach {
       case DeploymentInfo(_, p, DeploymentStatus.Scheduled, _, _) => {
-        runningDeploymentsMetric.decrement()
+        oldRunningDeploymentsMetric.decrement()
+        newRunningDeploymentsMetric.decrement()
         runningDeployments.remove(p.id).map(info =>
           info.promise.failure(new DeploymentCanceledException("The upgrade has been cancelled")))
       }
@@ -293,7 +304,8 @@ class DeploymentManagerActor(
     runningDeployments.get(id) match {
       case Some(DeploymentInfo(_, _, DeploymentStatus.Scheduled, _, _)) =>
         logger.info(s"Canceling scheduled deployment $id.")
-        runningDeploymentsMetric.decrement()
+        oldRunningDeploymentsMetric.decrement()
+        newRunningDeploymentsMetric.decrement()
         runningDeployments.remove(id).map(info => info.promise.failure(new DeploymentCanceledException("The upgrade has been cancelled")))
         Future.successful(Done)
 
@@ -319,8 +331,10 @@ class DeploymentManagerActor(
   /** Method saves new DeploymentInfo with status = [Scheduled] */
   private def markScheduled(plan: DeploymentPlan): Future[Done] = {
     val promise = Promise[Done]()
-    runningDeploymentsMetric.increment()
-    totalDeploymentsMetric.increment()
+    oldRunningDeploymentsMetric.increment()
+    newRunningDeploymentsMetric.increment()
+    oldTotalDeploymentsMetric.increment()
+    newTotalDeploymentsMetric.increment()
     runningDeployments += plan.id -> DeploymentInfo(plan = plan, status = DeploymentStatus.Scheduled, promise = promise)
     promise.future
   }
@@ -406,6 +420,7 @@ object DeploymentManagerActor {
 
   @SuppressWarnings(Array("MaxParameters"))
   def props(
+    metrics: Metrics,
     taskTracker: InstanceTracker,
     killService: KillService,
     launchQueue: LaunchQueue,
@@ -415,7 +430,7 @@ object DeploymentManagerActor {
     readinessCheckExecutor: ReadinessCheckExecutor,
     deploymentRepository: DeploymentRepository,
     deploymentActorProps: (ActorRef, KillService, SchedulerActions, DeploymentPlan, InstanceTracker, LaunchQueue, HealthCheckManager, EventStream, ReadinessCheckExecutor) => Props = DeploymentActor.props)(implicit mat: Materializer): Props = {
-    Props(new DeploymentManagerActor(taskTracker, killService, launchQueue,
+    Props(new DeploymentManagerActor(metrics, taskTracker, killService, launchQueue,
       scheduler, healthCheckManager, eventBus, readinessCheckExecutor, deploymentRepository, deploymentActorProps))
   }
 
