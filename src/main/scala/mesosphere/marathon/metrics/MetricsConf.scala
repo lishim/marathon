@@ -76,10 +76,10 @@ trait MetricsConf extends ScallopConf {
 
   lazy val metricsDataDogProtocol = opt[String](
     name = "metrics_datadog_protocol",
-    descr = "A protocol to use with the DataDog reporter (default: udp; supported protocols: udp).",
+    descr = "A protocol to use with the DataDog reporter (default: udp; supported protocols: udp, api).",
     argName = "host",
     default = Some("udp"),
-    validate = v => v == "udp",
+    validate = v => v == "udp" || v == "api",
     noshort = true
   )
 
@@ -96,6 +96,13 @@ trait MetricsConf extends ScallopConf {
     descr = "A remote port for the DataDog reporter.",
     argName = "port",
     validate = _ > 0,
+    noshort = true
+  )
+
+  lazy val metricsDataDogApiKey = opt[String](
+    name = "metrics_datadog_api_key",
+    descr = "A DataDog API key.",
+    argName = "key",
     noshort = true
   )
 

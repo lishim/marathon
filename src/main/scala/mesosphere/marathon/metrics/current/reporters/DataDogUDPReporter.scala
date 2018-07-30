@@ -153,5 +153,4 @@ object DataDogUDPReporter {
   def props(metricsConf: MetricsConf, registry: MetricRegistry): Props = {
     Props(new DataDogUDPReporter(metricsConf, registry))
   }
-
 }

@@ -7,7 +7,7 @@ import akka.Done
 import akka.actor.ActorRefFactory
 import com.codahale.metrics.MetricRegistry
 import kamon.metric.SubscriptionsDispatcher.TickMetricSnapshot
-import mesosphere.marathon.metrics.current.reporters.{DataDogUDPReporter, StatsDReporter}
+import mesosphere.marathon.metrics.current.reporters.{DataDogAPIReporter, DataDogUDPReporter, StatsDReporter}
 import mesosphere.marathon.metrics.{Metrics, MetricsConf}
 import org.eclipse.jetty.server.Handler
 import org.eclipse.jetty.servlet.ServletContextHandler
@@ -41,8 +41,12 @@ class DropwizardMetricsModule(val cliConf: MetricsConf) extends MetricsModule {
   override def start(actorRefFactory: ActorRefFactory): Done = {
     if (cliConf.metricsStatsDReporter())
       actorRefFactory.actorOf(StatsDReporter.props(cliConf, registry), "StatsDReporter")
-    if (cliConf.metricsDadaDogReporter())
-      actorRefFactory.actorOf(DataDogUDPReporter.props(cliConf, registry), name = "DataDogUDPReporter")
+    if (cliConf.metricsDadaDogReporter()) {
+      if (cliConf.metricsDataDogProtocol() == "udp")
+        actorRefFactory.actorOf(DataDogUDPReporter.props(cliConf, registry), name = "DataDogUDPReporter")
+      if (cliConf.metricsDataDogProtocol() == "api")
+        actorRefFactory.actorOf(DataDogAPIReporter.props(cliConf, registry), name = "DataDogAPIReporter")
+    }
     Done
   }
 }
