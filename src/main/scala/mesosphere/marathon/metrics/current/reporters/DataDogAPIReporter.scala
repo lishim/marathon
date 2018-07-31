@@ -1,6 +1,7 @@
 package mesosphere.marathon
 package metrics.current.reporters
 
+import java.net.InetAddress
 import java.time.Clock
 import java.util.concurrent.TimeUnit
 
@@ -22,6 +23,7 @@ class DataDogAPIReporter(metricsConf: MetricsConf, registry: MetricRegistry) ext
   private val transmissionIntervalMs = metricsConf.metricsDataDogTransmissionIntervalMs()
   private val transmissionIntervalS = transmissionIntervalMs / 1000
   private val http = Http(context.system)
+  private val host = InetAddress.getLocalHost.getHostName
 
   private case object Tick
 
@@ -138,7 +140,7 @@ class DataDogAPIReporter(metricsConf: MetricsConf, registry: MetricRegistry) ext
   private def reportMetric(buffer: StringBuilder, name: String, value: String, timestamp: Long,
     metricType: String): Unit = {
     if (buffer.length() > 0) buffer.append(',')
-    buffer.append(s"""{"metric":"$name","interval":$transmissionIntervalS,"points":[[$timestamp,$value]],"type":"$metricType"}""")
+    buffer.append(s"""{"metric":"$name","interval":$transmissionIntervalS,"points":[[$timestamp,$value]],"type":"$metricType",host:"$host"}""")
   }
 }
 
