@@ -1,21 +1,24 @@
 package mesosphere.marathon
 package metrics.current
 
+import java.time.Duration
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
 import com.codahale
+import com.codahale.metrics
 import com.codahale.metrics.MetricRegistry
+import com.github.rollingmetrics.histogram.{HdrBuilder, OverflowResolver}
 import kamon.metric.instrument.{Time, UnitOfMeasurement => KamonUnitOfMeasurement}
 import mesosphere.marathon.metrics.deprecated.MetricPrefix
 import mesosphere.marathon.metrics.dummy.DummyMetrics
-import mesosphere.marathon.metrics.{ClosureGauge, Counter, Gauge, HistogramTimer, Metrics, MinMaxCounter, SettableGauge, Timer, TimerAdapter}
+import mesosphere.marathon.metrics.{ClosureGauge, Counter, Gauge, HistogramTimer, Metrics, MetricsConf, MinMaxCounter, SettableGauge, Timer, TimerAdapter}
 import mesosphere.marathon.metrics.current.{UnitOfMeasurement => DropwizardUnitOfMeasurement}
 import mesosphere.marathon.util.RichLock
 
 import scala.concurrent.duration.FiniteDuration
 
-class DropwizardMetrics(namePrefix: String, registry: MetricRegistry) extends Metrics {
+class DropwizardMetrics(metricsConf: MetricsConf, registry: MetricRegistry) extends Metrics {
   override def deprecatedCounter(prefix: MetricPrefix, `class`: Class[_], metricName: String,
     tags: Map[String, String] = Map.empty,
     unit: KamonUnitOfMeasurement = KamonUnitOfMeasurement.Unknown): Counter =
@@ -40,6 +43,12 @@ class DropwizardMetrics(namePrefix: String, registry: MetricRegistry) extends Me
   override def deprecatedTimer(prefix: MetricPrefix, `class`: Class[_], metricName: String,
     tags: Map[String, String] = Map.empty, unit: Time = Time.Nanoseconds): Timer =
     DummyMetrics.deprecatedTimer(prefix, `class`, metricName, tags, unit)
+
+  private val namePrefix = metricsConf.metricsNamePrefix()
+  private val histogramReservoirSignificantDigits = metricsConf.metricsHistogramReservoirSignificantDigits()
+  private val histogramReservoirResetPeriodically = metricsConf.metricsHistogramReservoirResetPeriodically()
+  private val histogramReservoirResettingIntervalMs = metricsConf.metricsHistogramReservoirResettingIntervalMs()
+  private val histogramReservoirResettingChunks = metricsConf.metricsHistogramReservoirResettingChunks()
 
   implicit class DropwizardCounter(val counter: codahale.metrics.Counter) extends Counter {
     override def increment(): Unit = increment(1L)
@@ -75,7 +84,7 @@ class DropwizardMetrics(namePrefix: String, registry: MetricRegistry) extends Me
     new DropwizardSettableGauge(constructName(name, "gauge", unit))
   }
 
-  implicit class DropwizardTimerAdapter(val timer: codahale.metrics.Timer) extends TimerAdapter {
+  implicit class DropwizardTimerAdapter(val timer: metrics.Timer) extends TimerAdapter {
     override def update(duration: FiniteDuration): Unit = timer.update(duration)
     override def update(value: Long): Unit = timer.update(value, TimeUnit.NANOSECONDS)
   }
@@ -86,7 +95,19 @@ class DropwizardMetrics(namePrefix: String, registry: MetricRegistry) extends Me
     if (registry.getTimers().containsKey(effectiveName)) {
       HistogramTimer(registry.getTimers.get(effectiveName))
     } else {
-      val metric = new codahale.metrics.Timer(new codahale.metrics.ExponentiallyDecayingReservoir())
+      val reservoirBuilder = new HdrBuilder()
+        .withSignificantDigits(histogramReservoirSignificantDigits)
+        .withLowestDiscernibleValue(1)
+        .withHighestTrackableValue(Long.MaxValue, OverflowResolver.REDUCE_TO_HIGHEST_TRACKABLE)
+      if (histogramReservoirResetPeriodically) {
+        if (histogramReservoirResettingChunks == 0)
+          reservoirBuilder.resetReservoirPeriodically(Duration.ofMillis(histogramReservoirResettingIntervalMs))
+        else
+          reservoirBuilder.resetReservoirPeriodicallyByChunks(
+            Duration.ofMillis(histogramReservoirResettingIntervalMs), histogramReservoirResettingChunks)
+      }
+      val reservoir = reservoirBuilder.buildReservoir()
+      val metric = new metrics.Timer(reservoir)
       registry.register(effectiveName, metric)
       HistogramTimer(metric)
     }

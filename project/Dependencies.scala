@@ -250,8 +250,9 @@ object Dependency {
     val jetty = "io.dropwizard.metrics" % "metrics-jetty9" % Version % "compile"
     val jvm = "io.dropwizard.metrics" % "metrics-jvm" % Version % "compile"
     val servlets = "io.dropwizard.metrics" % "metrics-servlets" % Version % "compile"
+    val rollingMetrics = "com.github.vladimir-bukhtoyarov" % "rolling-metrics" % "2.0.4" % "compile"
 
-    val all = Seq(core, jersey, jetty, jvm, servlets)
+    val all = Seq(core, jersey, jetty, jvm, servlets, rollingMetrics)
   }
 
   object Test {

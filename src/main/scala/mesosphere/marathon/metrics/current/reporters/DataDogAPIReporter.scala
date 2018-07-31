@@ -62,7 +62,7 @@ class DataDogAPIReporter(metricsConf: MetricsConf, registry: MetricRegistry) ext
       .append("]}")
       .toString
 
-    val body = HttpEntity(MediaTypes.`application/json`, data.toString)
+    val body = HttpEntity(MediaTypes.`application/json`, data)
     http.singleRequest(HttpRequest(method = HttpMethods.POST, uri = apiUrl, entity = body)).pipeTo(self)
   }
 

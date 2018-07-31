@@ -30,10 +30,10 @@ Marathon has the following metric types:
   for instance, the number of apps in group deployments.
 * a `meter` measures the rate at which a set of events occur.
 * a `timer` is a combination of a meter and a histogram, which measure
-  the duration of events and the rate of their occurance.
+  the duration of events and the rate of their occurrence.
 
-Histograms and timers use
-[Exponentially Decaying Reservoirs](https://metrics.dropwizard.io/4.0.0/manual/core.html#exponentially-decaying-reservoirs).
+Histograms and timers are backed with reservoirs leveraging
+[HdrHistogram](http://hdrhistogram.org/).
 
 ## Units of measurement
 

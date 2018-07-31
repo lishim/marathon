@@ -31,6 +31,41 @@ trait MetricsConf extends ScallopConf {
     noshort = true
   )
 
+  lazy val metricsHistogramReservoirSignificantDigits = opt[Int](
+    name = "metrics_histogram_reservoir_significant_digits",
+    descr = "The number of significant decimal digits to which histograms and timers will maintain value resolution and separation.",
+    default = Some(4),
+    argName = "digits",
+    validate = v => v >= 0 && v <= 5,
+    noshort = true
+  )
+
+  lazy val metricsHistogramReservoirResetPeriodically = toggle(
+    name = "metrics_histogram_reservoir_reset_periodically",
+    descrYes = "Clear histograms and timers fully according to the given interval.",
+    default = Some(true),
+    prefix = "disable_",
+    noshort = true
+  )
+
+  lazy val metricsHistogramReservoirResettingIntervalMs = opt[Long](
+    name = "metrics_histogram_reservoir_resetting_interval_ms",
+    descr = "A histogram resetting interval in milliseconds.",
+    default = Some(5000),
+    argName = "ms",
+    validate = _ > 0,
+    noshort = true
+  )
+
+  lazy val metricsHistogramReservoirResettingChunks = opt[Int](
+    name = "metrics_histogram_reservoir_resetting_chunks",
+    descr = "Histogram reservoirs are divided into this number of chunks, and one chunk is cleared after each (resetting interval / number of chunks) elapsed",
+    default = Some(0),
+    argName = "chunks",
+    validate = v => v == 0 || v >= 2,
+    noshort = true
+  )
+
   lazy val metricsStatsDReporter = toggle(
     name = "metrics_statsd",
     descrYes = "Enable the StatsD reporter.",

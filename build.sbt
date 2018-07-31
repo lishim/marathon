@@ -105,6 +105,7 @@ lazy val commonSettings = Seq(
     "-encoding", "UTF-8", "-source", "1.8", "-target", "1.8", "-Xlint:unchecked", "-Xlint:deprecation"
   ),
   resolvers ++= Seq(
+    Resolver.JCenterRepository,
     "Typesafe Releases" at "https://repo.typesafe.com/typesafe/releases/",
     "Apache Shapshots" at "https://repository.apache.org/content/repositories/snapshots/",
     "Mesosphere Public Repo" at "https://downloads.mesosphere.com/maven"

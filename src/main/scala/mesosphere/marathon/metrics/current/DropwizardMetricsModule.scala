@@ -12,11 +12,11 @@ import mesosphere.marathon.metrics.{Metrics, MetricsConf}
 import org.eclipse.jetty.server.Handler
 import org.eclipse.jetty.servlet.ServletContextHandler
 
-class DropwizardMetricsModule(val cliConf: MetricsConf) extends MetricsModule {
+class DropwizardMetricsModule(val metricsConf: MetricsConf) extends MetricsModule {
   override lazy val servletHandlers: Seq[Handler] = Seq(
     new api.HttpTransferMetricsHandler(new api.HTTPMetricsFilter(metrics)))
 
-  private lazy val metricNamePrefix = cliConf.metricsNamePrefix()
+  private lazy val metricNamePrefix = metricsConf.metricsNamePrefix()
   private lazy val registry: MetricRegistry = {
     val r = new MetricRegistry
     r.register(
@@ -27,7 +27,7 @@ class DropwizardMetricsModule(val cliConf: MetricsConf) extends MetricsModule {
     r.register(s"$metricNamePrefix.jvm.threads", new ThreadStatesGaugeSet())
     r
   }
-  override lazy val metrics: Metrics = new DropwizardMetrics(metricNamePrefix, registry)
+  override lazy val metrics: Metrics = new DropwizardMetrics(metricsConf, registry)
 
   override def instrumentedHandlerFor(servletContextHandler: ServletContextHandler): Handler = {
     val handler = new InstrumentedHandler(registry, metricNamePrefix)
@@ -39,13 +39,13 @@ class DropwizardMetricsModule(val cliConf: MetricsConf) extends MetricsModule {
 
   override def snapshot(): Either[TickMetricSnapshot, MetricRegistry] = Right(registry)
   override def start(actorRefFactory: ActorRefFactory): Done = {
-    if (cliConf.metricsStatsDReporter())
-      actorRefFactory.actorOf(StatsDReporter.props(cliConf, registry), "StatsDReporter")
-    if (cliConf.metricsDadaDogReporter()) {
-      if (cliConf.metricsDataDogProtocol() == "udp")
-        actorRefFactory.actorOf(DataDogUDPReporter.props(cliConf, registry), name = "DataDogUDPReporter")
-      if (cliConf.metricsDataDogProtocol() == "api")
-        actorRefFactory.actorOf(DataDogAPIReporter.props(cliConf, registry), name = "DataDogAPIReporter")
+    if (metricsConf.metricsStatsDReporter())
+      actorRefFactory.actorOf(StatsDReporter.props(metricsConf, registry), "StatsDReporter")
+    if (metricsConf.metricsDadaDogReporter()) {
+      if (metricsConf.metricsDataDogProtocol() == "udp")
+        actorRefFactory.actorOf(DataDogUDPReporter.props(metricsConf, registry), name = "DataDogUDPReporter")
+      if (metricsConf.metricsDataDogProtocol() == "api")
+        actorRefFactory.actorOf(DataDogAPIReporter.props(metricsConf, registry), name = "DataDogAPIReporter")
     }
     Done
   }
