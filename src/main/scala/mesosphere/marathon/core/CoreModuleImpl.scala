@@ -1,6 +1,7 @@
 package mesosphere.marathon
 package core
 
+import akka.stream.Materializer
 import java.time.Clock
 import java.util.concurrent.Executors
 import javax.inject.Named
@@ -33,6 +34,7 @@ import mesosphere.marathon.core.task.termination.TaskTerminationModule
 import mesosphere.marathon.core.task.tracker.InstanceTrackerModule
 import mesosphere.marathon.core.task.update.TaskStatusUpdateProcessor
 import mesosphere.marathon.storage.{StorageConf, StorageModule}
+import mesosphere.marathon.stream.EnrichedFlow
 import mesosphere.util.NamedExecutionContext
 import mesosphere.util.state.MesosLeaderInfo
 
@@ -51,6 +53,7 @@ class CoreModuleImpl @Inject() (
     eventStream: EventStream,
     @Named(ModuleNames.HOST_PORT) hostPort: String,
     actorSystem: ActorSystem,
+    materializer: Materializer,
     marathonSchedulerDriverHolder: MarathonSchedulerDriverHolder,
     clock: Clock,
     scheduler: Provider[DeploymentService],
@@ -107,7 +110,7 @@ class CoreModuleImpl @Inject() (
     clock, random, marathonConf,
     leadershipModule,
     () => marathonScheduler.getLocalRegion
-  )
+  )(materializer)
 
   private[this] lazy val offerMatcherReconcilerModule =
     new OfferMatcherReconciliationModule(
@@ -117,7 +120,7 @@ class CoreModuleImpl @Inject() (
       instanceTrackerModule.instanceTracker,
       storageModule.groupRepository,
       leadershipModule
-    )
+    )(materializer)
 
   override lazy val launcherModule = new LauncherModule(
     // infrastructure
@@ -162,10 +165,11 @@ class CoreModuleImpl @Inject() (
     marathonConf, offerMatcherManagerModule.subOfferMatcherManager)
 
   /** Combine offersWanted state from multiple sources. */
-  private[this] lazy val offersWanted =
+  private[this] lazy val offersWanted = {
     offerMatcherManagerModule.globalOfferMatcherWantsOffers
-      .combineLatest(offerMatcherReconcilerModule.offersWantedObservable)
+      .via(EnrichedFlow.combineLatest(offerMatcherReconcilerModule.offersWantedObservable, eagerComplete = true))
       .map { case (managerWantsOffers, reconciliationWantsOffers) => managerWantsOffers || reconciliationWantsOffers }
+  }
 
   lazy val maybeOfferReviver = flowActors.maybeOfferReviver(
     clock, marathonConf,

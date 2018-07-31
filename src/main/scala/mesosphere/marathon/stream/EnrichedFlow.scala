@@ -2,7 +2,7 @@ package mesosphere.marathon
 package stream
 
 import akka.NotUsed
-import akka.stream.scaladsl.{Flow, Source}
+import akka.stream.scaladsl.{Flow, Keep, Source}
 
 @SuppressWarnings(Array("AsInstanceOf"))
 object EnrichedFlow {
@@ -50,5 +50,32 @@ object EnrichedFlow {
         }
       }
     }
+  }
+
+  def combineLatest[T, M](otherSource: Source[T, M], eagerComplete: Boolean): Flow[T, (T, T), M] = {
+    Flow[T]
+      .map(Left(_))
+      .mergeMat(otherSource.map(Right(_)), eagerComplete)(Keep.right)
+      .statefulMapConcat { () =>
+        var left: Option[T] = None
+        var right: Option[T] = None
+
+        { el =>
+
+          el match {
+            case Left(v) =>
+              left = Some(v)
+            case Right(v) =>
+              right = Some(v)
+          }
+
+          (left, right) match {
+            case (Some(l), Some(r)) =>
+              List((l, r))
+            case _ =>
+              Nil
+          }
+        }
+      }
   }
 }
